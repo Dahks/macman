@@ -68,6 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     var isSwitcherActive = false
+    var isOverviewMode = false  // true = toggle mode (stays open), false = hold mode (commits on Cmd release)
 
     func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
@@ -81,6 +82,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             18: 0, 19: 1, 20: 2, 21: 3, 23: 4,
             22: 5, 26: 6, 28: 7, 25: 8
         ]
+
+        // § / ° key (above Tab on ISO keyboards), keycode 10
+        let kSectionKeyCode: Int64 = 10
+
+        // Cmd+Ctrl+° — toggle app overview
+        if type == .keyDown && keyCode == kSectionKeyCode
+            && flags.contains(.maskCommand) && flags.contains(.maskControl) {
+            if isSwitcherActive && isOverviewMode {
+                isSwitcherActive = false
+                isOverviewMode = false
+                switcher?.hide()
+            } else {
+                isSwitcherActive = true
+                isOverviewMode = true
+                switcher?.showOverview()
+            }
+            return nil
+        }
 
         // Cmd+Ctrl+1-9 — jump directly to app by launch order
         if type == .keyDown
@@ -104,16 +123,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Cmd released — commit
-        if type == .flagsChanged && isSwitcherActive && !flags.contains(.maskCommand) {
+        // Cmd released — commit (only in hold mode, not overview mode)
+        if type == .flagsChanged && isSwitcherActive && !isOverviewMode && !flags.contains(.maskCommand) {
             isSwitcherActive = false
             switcher?.commitAndHide()
             return nil
         }
 
-        // Escape — cancel
+        // Escape — cancel (works in both modes)
         if type == .keyDown && keyCode == 53 && isSwitcherActive {
             isSwitcherActive = false
+            isOverviewMode = false
             switcher?.hide()
             return nil
         }

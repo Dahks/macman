@@ -10,9 +10,11 @@ class SwitcherPanel {
     var cachedApps: [AppEntry] = []
     // Track launch order by PID — new apps get appended, quit apps get removed
     var launchOrderPids: [pid_t] = []
+    // MRU order — most recently activated first
+    var mruPids: [pid_t] = []
 
     init() {
-        let frame = NSRect(x: 0, y: 0, width: 600, height: 100)
+        let frame = NSRect(x: 0, y: 0, width: 600, height: 50)
         panel = NSPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -34,12 +36,22 @@ class SwitcherPanel {
         startCacheTimer()
 
         let ws = NSWorkspace.shared
-        ws.notificationCenter.addObserver(self, selector: #selector(appChanged), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
-        ws.notificationCenter.addObserver(self, selector: #selector(appChanged), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
-        ws.notificationCenter.addObserver(self, selector: #selector(appChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        ws.notificationCenter.addObserver(self, selector: #selector(appLaunchedOrQuit), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        ws.notificationCenter.addObserver(self, selector: #selector(appLaunchedOrQuit), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        ws.notificationCenter.addObserver(self, selector: #selector(appActivated(_:)), name: NSWorkspace.didActivateApplicationNotification, object: nil)
     }
 
-    @objc func appChanged(_ notification: Notification) {
+    @objc func appLaunchedOrQuit(_ notification: Notification) {
+        refreshCache()
+    }
+
+    @objc func appActivated(_ notification: Notification) {
+        // Update MRU order: move activated app to front
+        if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
+            let pid = app.processIdentifier
+            mruPids.removeAll { $0 == pid }
+            mruPids.insert(pid, at: 0)
+        }
         refreshCache()
     }
 
@@ -57,13 +69,18 @@ class SwitcherPanel {
 
         let currentPids = Set(runningApps.map { $0.processIdentifier })
 
-        // Remove PIDs that are no longer running
+        // Clean up dead PIDs from both lists
         launchOrderPids.removeAll { !currentPids.contains($0) }
+        mruPids.removeAll { !currentPids.contains($0) }
 
-        // Append any new PIDs (preserves order of existing ones)
+        // Append any new PIDs to launch order
         for app in runningApps {
             if !launchOrderPids.contains(app.processIdentifier) {
                 launchOrderPids.append(app.processIdentifier)
+            }
+            // Also add to MRU if not tracked yet (at the end)
+            if !mruPids.contains(app.processIdentifier) {
+                mruPids.append(app.processIdentifier)
             }
         }
 
@@ -74,12 +91,17 @@ class SwitcherPanel {
             return AppEntry(nsApp: nsApp)
         }
 
-        // Pre-warm icon cache
         for entry in entries {
             _ = entry.cachedIcon
         }
 
         cachedApps = entries
+    }
+
+    /// Get apps in MRU order
+    func getMRUApps() -> [AppEntry] {
+        let appsByPid = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.nsApp.processIdentifier, $0) })
+        return mruPids.compactMap { appsByPid[$0] }
     }
 
     /// Get apps in launch order (for Cmd+Ctrl+N)
@@ -93,29 +115,27 @@ class SwitcherPanel {
         app.nsApp.activate(options: .activateIgnoringOtherApps)
     }
 
-    func show(reverse: Bool) {
+    /// Toggle overview — shows all apps in launch order with number labels
+    func showOverview() {
         apps = cachedApps
+        guard !apps.isEmpty else { return }
 
-        // Re-sort so current frontmost is first (for the Cmd+< switcher view)
-        let frontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        apps.sort { a, b in
-            if a.nsApp.processIdentifier == frontmostPid { return true }
-            if b.nsApp.processIdentifier == frontmostPid { return false }
-            return false
-        }
+        selectedIndex = -1
+        contentView.update(apps: apps, selectedIndex: selectedIndex, showNumbers: true)
 
+        positionPanel(appCount: apps.count)
+        panel.orderFrontRegardless()
+    }
+
+    /// Cmd+< switcher — MRU order
+    func show(reverse: Bool) {
+        apps = getMRUApps()
         guard apps.count > 1 else { return }
 
         selectedIndex = reverse ? apps.count - 1 : 1
         contentView.update(apps: apps, selectedIndex: selectedIndex)
 
-        let width = CGFloat(apps.count) * 80 + 20
-        let height: CGFloat = 100
-        let screenFrame = NSScreen.main?.frame ?? .zero
-        let x = (screenFrame.width - width) / 2
-        let y = (screenFrame.height - height) / 2
-        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
-
+        positionPanel(appCount: apps.count)
         panel.orderFrontRegardless()
     }
 
@@ -129,8 +149,21 @@ class SwitcherPanel {
         contentView.update(apps: apps, selectedIndex: selectedIndex)
     }
 
+    /// Position panel centered horizontally, just below the menu bar / notch
+    func positionPanel(appCount: Int) {
+        let cellWidth: CGFloat = 52
+        let width = CGFloat(appCount) * cellWidth + 20
+        let height: CGFloat = 50
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let screenFrame = screen.frame
+        let visibleFrame = screen.visibleFrame
+        let x = (screenFrame.width - width) / 2
+        let y = visibleFrame.maxY - height - 8
+        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+    }
+
     func commitAndHide() {
-        if selectedIndex < apps.count {
+        if selectedIndex >= 0 && selectedIndex < apps.count {
             let app = apps[selectedIndex]
             app.nsApp.activate(options: .activateIgnoringOtherApps)
         }

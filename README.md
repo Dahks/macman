@@ -27,6 +27,15 @@ Grant Accessibility permission to `/usr/local/bin/macman` when prompted.
 
 For development, run directly with `swift build && swift run`.
 
+## Kill macOS animations
+
+Disables most system animations (window open/close, Dock, Mission Control, Finder, Launchpad). Note: the window crossfade when switching apps is hardcoded in WindowServer and cannot be disabled.
+
+```bash
+./macman.sh kill-animations      # Disable animations
+./macman.sh restore-animations   # Revert to defaults
+```
+
 ## Keybindings
 
 ### Switcher (MRU order)

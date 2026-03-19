@@ -110,8 +110,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Cmd+< pressed (Cmd+Shift+< = >  = reverse)
-        if type == .keyDown && keyCode == kAngleBracketKeyCode && flags.contains(.maskCommand) {
+        // Cmd+< or Cmd+Tab pressed
+        let kTabKeyCode: Int64 = 48
+        if type == .keyDown && (keyCode == kAngleBracketKeyCode || keyCode == kTabKeyCode) && flags.contains(.maskCommand) {
             let reverse = flags.contains(.maskShift)
 
             if !isSwitcherActive {

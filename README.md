@@ -7,11 +7,25 @@ A fast, zero-animation app switcher for macOS. Intercepts hotkeys at the HID lev
 - macOS 13+
 - Accessibility permission (System Settings > Privacy & Security > Accessibility — grant to your terminal app)
 
-## Run
+## Setup
 
 ```bash
-swift build && swift run
+./macman.sh install   # Build release binary and copy to /usr/local/bin
+./macman.sh start     # Start as background service (runs on login)
 ```
+
+Grant Accessibility permission to `/usr/local/bin/macman` when prompted.
+
+## Service management
+
+```bash
+./macman.sh stop      # Stop the service
+./macman.sh restart   # Restart the service
+./macman.sh update    # Rebuild, install, and restart
+./macman.sh log       # Tail the log file
+```
+
+For development, run directly with `swift build && swift run`.
 
 ## Keybindings
 

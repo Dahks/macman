@@ -73,6 +73,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
+        // fn+h/j/k/l → arrow keys (works for keyDown and keyUp)
+        // h=4→left(123), j=38→down(125), k=40→up(126), l=37→right(124)
+        if (type == .keyDown || type == .keyUp) && flags.contains(.maskSecondaryFn) {
+            let arrowMap: [Int64: Int64] = [4: 123, 38: 125, 40: 126, 37: 124]
+            if let arrowCode = arrowMap[keyCode] {
+                event.setIntegerValueField(.keyboardEventKeycode, value: arrowCode)
+                event.flags.remove(.maskSecondaryFn)
+                return Unmanaged.passRetained(event)
+            }
+        }
+
         // Key between left-Shift and Z on ISO keyboards (< > key), keycode 50
         let kAngleBracketKeyCode: Int64 = 50
 

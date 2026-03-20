@@ -138,25 +138,35 @@ class TmuxBarView: NSView, NSTextFieldDelegate {
         isRenaming = true
         renameIndex = index
 
-        // Calculate position of the cell
+        // Calculate position of the cell (must match draw logic exactly)
         let attrs: [NSAttributedString.Key: Any] = [.font: cellFont]
         var x: CGFloat = horizontalInset
         for i in 0..<index {
             let text = cellText(for: cells[i])
             let textSize = (text as NSString).size(withAttributes: attrs)
-            x += textSize.width + cellPadding
+            let iconExtra: CGFloat = cells[i].icon != nil ? iconSize + iconGap : 0
+            x += textSize.width + iconExtra + cellPadding
         }
 
+        // Offset past: cellPadding/2, icon, "N:" prefix
+        var labelX = x + cellPadding / 2
+        if cells[index].icon != nil {
+            labelX += iconSize + iconGap
+        }
         let prefix = "\(cells[index].index):"
         let prefixWidth = (prefix as NSString).size(withAttributes: attrs).width
+        labelX += prefixWidth
+
         let currentLabel = cells[index].label
         let labelWidth = max((currentLabel as NSString).size(withAttributes: attrs).width + 20, 60)
+        let fieldHeight: CGFloat = min(bounds.height, 16)
 
+        renameField.font = cellFont
         renameField.frame = NSRect(
-            x: x + cellPadding / 2 + prefixWidth,
-            y: (bounds.height - 20) / 2,
+            x: labelX,
+            y: (bounds.height - fieldHeight) / 2,
             width: labelWidth,
-            height: 20
+            height: fieldHeight
         )
         renameField.stringValue = currentLabel
         renameField.isHidden = false

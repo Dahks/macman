@@ -18,7 +18,7 @@ class SwitcherPanel {
     var selectedIndex: Int = 0
     var wasOverviewOpen: Bool = false
 
-    var viewMode: ViewMode = .icon
+    var viewMode: ViewMode = .tmux
 
     // Cached app list in stable launch order (for Cmd+Ctrl+N bindings)
     var cachedApps: [AppEntry] = []
@@ -320,7 +320,7 @@ class SwitcherPanel {
         let appsByPid = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.nsApp.processIdentifier, $0) })
         let cells = cachedWindows.enumerated().map { (i, win) -> TmuxBarView.Cell in
             TmuxBarView.Cell(
-                index: i + 1,  // 1-based to match Ctrl+1-9
+                index: i,  // 0-based to match Ctrl+0-9
                 label: win.displayLabel(overrides: windowNameOverrides),
                 isActive: win.windowID == activeWindowID,
                 isPrevious: win.windowID == previousWindowID,

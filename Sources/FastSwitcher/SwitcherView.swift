@@ -48,8 +48,8 @@ class SwitcherView: NSView {
             app.icon.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1.0)
 
             // Number badge (top-right of icon) in overview mode
-            if showNumbers && index < 9 {
-                let numStr = "\(index + 1)" as NSString
+            if showNumbers && index < 10 {
+                let numStr = "\(index)" as NSString
                 let badgeSize: CGFloat = 18
                 let badgeRect = NSRect(
                     x: iconRect.maxX - badgeSize + 2,

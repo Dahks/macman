@@ -16,6 +16,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switcher = SwitcherPanel()
         installEventTap()
 
+        isSwitcherActive = true
+        isOverviewMode = true
+        switcher?.showOverview()
+
         print("FastSwitcher running. Press Cmd+Tab to switch windows.")
         print("Press Ctrl+C to quit.")
     }
@@ -116,9 +120,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Number keycodes: 1-9 on main keyboard
         // 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25
+        // 0=29, 1=18, 2=19, 3=20, 4=21, 5=23, 6=22, 7=26, 8=28, 9=25
         let numberKeyCodes: [Int64: Int] = [
-            18: 0, 19: 1, 20: 2, 21: 3, 23: 4,
-            22: 5, 26: 6, 28: 7, 25: 8
+            29: 0, 18: 1, 19: 2, 20: 3, 21: 4, 23: 5,
+            22: 6, 26: 7, 28: 8, 25: 9
         ]
 
         // § / ° key (above Tab on ISO keyboards), keycode 10

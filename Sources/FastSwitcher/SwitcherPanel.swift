@@ -170,7 +170,7 @@ class SwitcherPanel {
         let screenFrame = screen.frame
         let visibleFrame = screen.visibleFrame
         let x = (screenFrame.width - width) / 2
-        let y = visibleFrame.maxY - height + 8
+        let y: CGFloat = -8
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
 
         // Update the vibrancy mask to match new size

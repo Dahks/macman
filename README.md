@@ -51,5 +51,20 @@ Disables most system animations (window open/close, Dock, Mission Control, Finde
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl + 1-9` | Jump to app by launch order |
-| `Ctrl + °` | Toggle app overview |
+| `Ctrl + 1-9` | Jump to app/window by index |
+| `Ctrl + °` | Toggle overview bar |
+
+### View modes
+
+macman has two view modes: **icon view** (default) showing app icons in a pill, and **tmux view** showing individual windows as a text bar like `1:term  2:Discord  3:Google Chrome*`.
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl + S` | Cycle between icon view and tmux view |
+| `Ctrl + ,` | Rename current window label (tmux view only) |
+
+In tmux view:
+- Windows are listed in stable order (order they first appeared), not stacking order
+- `*` marks the active window, `-` marks the previously active window
+- `Ctrl + 1-9` jumps to the window at that position
+- Rename labels are stored in memory and persist until the window closes

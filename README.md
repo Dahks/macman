@@ -51,5 +51,5 @@ Disables most system animations (window open/close, Dock, Mission Control, Finde
 
 | Shortcut | Action |
 |---|---|
-| `Cmd + Ctrl + 1-9` | Jump to app by launch order |
-| `Cmd + Ctrl + °` | Toggle app overview |
+| `Ctrl + 1-9` | Jump to app by launch order |
+| `Ctrl + °` | Toggle app overview |

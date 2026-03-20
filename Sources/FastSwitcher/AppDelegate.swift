@@ -97,9 +97,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // § / ° key (above Tab on ISO keyboards), keycode 10
         let kSectionKeyCode: Int64 = 10
 
-        // Cmd+Ctrl+° — toggle app overview
+        // Ctrl+° — toggle app overview
         if type == .keyDown && keyCode == kSectionKeyCode
-            && flags.contains(.maskCommand) && flags.contains(.maskControl) {
+            && flags.contains(.maskControl) && !flags.contains(.maskCommand) {
             if isSwitcherActive && isOverviewMode {
                 isSwitcherActive = false
                 isOverviewMode = false
@@ -112,10 +112,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Cmd+Ctrl+1-9 — jump directly to app by launch order
+        // Ctrl+1-9 — jump directly to app by launch order
         if type == .keyDown
-            && flags.contains(.maskCommand)
-            && flags.contains(.maskControl),
+            && flags.contains(.maskControl)
+            && !flags.contains(.maskCommand),
            let appIndex = numberKeyCodes[keyCode] {
             switcher?.activateAppAtIndex(appIndex)
             return nil

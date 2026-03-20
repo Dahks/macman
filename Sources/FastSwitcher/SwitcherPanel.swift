@@ -5,6 +5,7 @@ class SwitcherPanel {
     let contentView: SwitcherView
     var apps: [AppEntry] = []
     var selectedIndex: Int = 0
+    var wasOverviewOpen: Bool = false
 
     // Cached app list in stable launch order (for Cmd+Ctrl+N bindings)
     var cachedApps: [AppEntry] = []
@@ -133,6 +134,7 @@ class SwitcherPanel {
         guard !apps.isEmpty else { return }
 
         selectedIndex = -1
+        wasOverviewOpen = true
         contentView.update(apps: apps, selectedIndex: selectedIndex, showNumbers: true)
 
         positionPanel(appCount: apps.count)
@@ -199,6 +201,7 @@ class SwitcherPanel {
     }
 
     func hide() {
+        wasOverviewOpen = false
         panel.orderOut(nil)
     }
 }

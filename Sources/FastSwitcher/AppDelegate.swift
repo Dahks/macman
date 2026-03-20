@@ -126,7 +126,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if type == .keyDown && (keyCode == kAngleBracketKeyCode || keyCode == kTabKeyCode) && flags.contains(.maskCommand) {
             let reverse = flags.contains(.maskShift)
 
-            if !isSwitcherActive {
+            if isOverviewMode {
+                // Hide overview, switch to MRU mode (keep wasOverviewOpen flag)
+                isOverviewMode = false
+                switcher?.panel.orderOut(nil)
+                isSwitcherActive = true
+                switcher?.show(reverse: reverse)
+            } else if !isSwitcherActive {
                 isSwitcherActive = true
                 switcher?.show(reverse: reverse)
             } else {
@@ -135,10 +141,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Cmd released — commit (only in hold mode, not overview mode)
+        // Cmd released — commit
         if type == .flagsChanged && isSwitcherActive && !isOverviewMode && !flags.contains(.maskCommand) {
+            let shouldRestoreOverview = switcher?.wasOverviewOpen ?? false
             isSwitcherActive = false
             switcher?.commitAndHide()
+
+            // Restore overview if it was open before
+            if shouldRestoreOverview {
+                isSwitcherActive = true
+                isOverviewMode = true
+                switcher?.showOverview()
+            }
             return nil
         }
 

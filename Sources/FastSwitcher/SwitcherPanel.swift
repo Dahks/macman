@@ -281,15 +281,20 @@ class SwitcherPanel {
         }
     }
 
+    /// The built-in display (origin 0,0) — always place the bar here.
+    var builtInScreen: NSScreen {
+        NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.screens[0]
+    }
+
     /// Position panel centered horizontally, just below the menu bar / notch
     func positionPanel(appCount: Int) {
         let cellWidth: CGFloat = 52
         let width = CGFloat(appCount) * cellWidth + 20
         let height: CGFloat = 50
-        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let screen = builtInScreen
         let screenFrame = screen.frame
-        let x = (screenFrame.width - width) / 2
-        let y: CGFloat = -8
+        let x = screenFrame.origin.x + (screenFrame.width - width) / 2
+        let y = screenFrame.origin.y - 8
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
 
         // Update the vibrancy mask to match new size
@@ -328,10 +333,10 @@ class SwitcherPanel {
     func positionTmuxPanel() {
         let width = tmuxView.requiredWidth()
         let height: CGFloat = 16
-        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let screen = builtInScreen
         let screenFrame = screen.frame
-        let x = (screenFrame.width - width) / 2
-        let y: CGFloat = -3
+        let x = screenFrame.origin.x + (screenFrame.width - width) / 2
+        let y = screenFrame.origin.y - 3
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
 
         if let vibrancy = panel.contentView as? NSVisualEffectView {

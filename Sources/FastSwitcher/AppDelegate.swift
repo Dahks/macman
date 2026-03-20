@@ -96,6 +96,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if (type == .keyDown || type == .keyUp) && flags.contains(.maskSecondaryFn) {
             let arrowMap: [Int64: Int64] = [4: 123, 38: 125, 40: 126, 37: 124]
             if let arrowCode = arrowMap[keyCode] {
+                // Create a fresh event to avoid residual fn flag in raw event data
+                let isDown = type == .keyDown
+                if let newEvent = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(arrowCode), keyDown: isDown) {
+                    var newFlags = flags
+                    newFlags.remove(.maskSecondaryFn)
+                    newEvent.flags = newFlags
+                    return Unmanaged.passRetained(newEvent)
+                }
+                // Fallback: modify in-place
                 event.setIntegerValueField(.keyboardEventKeycode, value: arrowCode)
                 event.flags.remove(.maskSecondaryFn)
                 return Unmanaged.passRetained(event)

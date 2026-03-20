@@ -331,7 +331,7 @@ class SwitcherPanel {
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.frame
         let x = (screenFrame.width - width) / 2
-        let y: CGFloat = -4
+        let y: CGFloat = -3
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
 
         if let vibrancy = panel.contentView as? NSVisualEffectView {

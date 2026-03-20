@@ -73,6 +73,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
+
+        // Rename mode — intercept events and forward to our own app's text field
+        if switcher?.isRenaming == true {
+            if type == .keyDown && keyCode == 53 {
+                // Escape cancels rename
+                switcher?.tmuxView.cancelRename()
+                return nil
+            }
+            // Re-post key events to our own application so the NSTextField receives them
+            if type == .keyDown || type == .keyUp {
+                if let nsEvent = NSEvent(cgEvent: event) {
+                    NSApp.postEvent(nsEvent, atStart: true)
+                }
+                return nil  // consume the original event
+            }
+            return Unmanaged.passRetained(event)
+        }
+
         // fn+h/j/k/l → arrow keys (works for keyDown and keyUp)
         // h=4→left(123), j=38→down(125), k=40→up(126), l=37→right(124)
         if (type == .keyDown || type == .keyUp) && flags.contains(.maskSecondaryFn) {
@@ -97,6 +115,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // § / ° key (above Tab on ISO keyboards), keycode 10
         let kSectionKeyCode: Int64 = 10
 
+        // Ctrl+S (keyCode 1) — cycle view mode
+        if type == .keyDown && keyCode == 1
+            && flags.contains(.maskControl) && !flags.contains(.maskCommand) {
+            switcher?.cycleViewMode()
+            return nil
+        }
+
+        // Ctrl+, (keyCode 43) — rename current window (tmux mode only)
+        if type == .keyDown && keyCode == 43
+            && flags.contains(.maskControl) && !flags.contains(.maskCommand) {
+            print("Ctrl+, pressed, viewMode=\(String(describing: switcher?.viewMode))")
+            if switcher?.viewMode == .tmux {
+                switcher?.beginRenameMode()
+            }
+            return nil
+        }
+
         // Ctrl+° — toggle app overview
         if type == .keyDown && keyCode == kSectionKeyCode
             && flags.contains(.maskControl) && !flags.contains(.maskCommand) {
@@ -112,12 +147,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Ctrl+1-9 — jump directly to app by launch order
+        // Ctrl+1-9 — jump directly to app/window by index
         if type == .keyDown
             && flags.contains(.maskControl)
             && !flags.contains(.maskCommand),
-           let appIndex = numberKeyCodes[keyCode] {
-            switcher?.activateAppAtIndex(appIndex)
+           let index = numberKeyCodes[keyCode] {
+            if switcher?.viewMode == .tmux {
+                switcher?.activateWindowAtIndex(index)
+            } else {
+                switcher?.activateAppAtIndex(index)
+            }
             return nil
         }
 

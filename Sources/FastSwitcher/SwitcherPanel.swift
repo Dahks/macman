@@ -1,11 +1,24 @@
 import Cocoa
+import ApplicationServices
+
+enum ViewMode {
+    case icon
+    case tmux
+}
+
+class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
 
 class SwitcherPanel {
-    let panel: NSPanel
+    let panel: KeyablePanel
     let contentView: SwitcherView
+    let tmuxView: TmuxBarView
     var apps: [AppEntry] = []
     var selectedIndex: Int = 0
     var wasOverviewOpen: Bool = false
+
+    var viewMode: ViewMode = .icon
 
     // Cached app list in stable launch order (for Cmd+Ctrl+N bindings)
     var cachedApps: [AppEntry] = []
@@ -14,9 +27,18 @@ class SwitcherPanel {
     // MRU order — most recently activated first
     var mruPids: [pid_t] = []
 
+    // Window tracking for tmux mode
+    var cachedWindows: [WindowEntry] = []
+    var windowOrder: [CGWindowID] = []  // stable order, like launchOrderPids
+    var windowNameOverrides: [CGWindowID: String] = [:]
+    var activeWindowID: CGWindowID = 0
+    var previousWindowID: CGWindowID = 0
+
+    var isRenaming: Bool { tmuxView.isRenaming }
+
     init() {
         let frame = NSRect(x: 0, y: 0, width: 600, height: 50)
-        panel = NSPanel(
+        panel = KeyablePanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -43,7 +65,21 @@ class SwitcherPanel {
         contentView = SwitcherView(frame: frame)
         contentView.autoresizingMask = [.width, .height]
         vibrancy.addSubview(contentView)
+
+        tmuxView = TmuxBarView(frame: frame)
+        tmuxView.autoresizingMask = [.width, .height]
+        tmuxView.isHidden = true
+        vibrancy.addSubview(tmuxView)
+
         panel.contentView = vibrancy
+
+        // Rename callbacks
+        tmuxView.onRenameCommit = { [weak self] index, newName in
+            self?.commitRename(index: index, newName: newName)
+        }
+        tmuxView.onRenameCancel = {
+            // Nothing extra needed
+        }
 
         refreshCache()
         startCacheTimer()
@@ -109,6 +145,33 @@ class SwitcherPanel {
         }
 
         cachedApps = entries
+
+        // Also fetch windows for tmux mode
+        let windows = WindowEntry.fetchWindows()
+        let currentWindowIDs = Set(windows.map { $0.windowID })
+
+        // Prune stale entries
+        windowOrder.removeAll { !currentWindowIDs.contains($0) }
+        windowNameOverrides = windowNameOverrides.filter { currentWindowIDs.contains($0.key) }
+
+        // Append new windows to stable order
+        for win in windows {
+            if !windowOrder.contains(win.windowID) {
+                windowOrder.append(win.windowID)
+            }
+        }
+
+        // Build cachedWindows in stable order
+        let windowsByID = Dictionary(uniqueKeysWithValues: windows.map { ($0.windowID, $0) })
+        cachedWindows = windowOrder.compactMap { windowsByID[$0] }
+
+        // Track active window ID changes (first in CGWindowList = frontmost)
+        if let frontWindow = windows.first {
+            if frontWindow.windowID != activeWindowID {
+                previousWindowID = activeWindowID
+                activeWindowID = frontWindow.windowID
+            }
+        }
     }
 
     /// Get apps in MRU order
@@ -130,26 +193,61 @@ class SwitcherPanel {
 
     /// Toggle overview — shows all apps in launch order with number labels
     func showOverview() {
-        apps = cachedApps
-        guard !apps.isEmpty else { return }
-
-        selectedIndex = -1
         wasOverviewOpen = true
-        contentView.update(apps: apps, selectedIndex: selectedIndex, showNumbers: true)
 
-        positionPanel(appCount: apps.count)
+        switch viewMode {
+        case .icon:
+            apps = cachedApps
+            guard !apps.isEmpty else { return }
+            selectedIndex = -1
+            contentView.isHidden = false
+            tmuxView.isHidden = true
+            contentView.update(apps: apps, selectedIndex: selectedIndex, showNumbers: true)
+            positionPanel(appCount: apps.count)
+
+        case .tmux:
+            guard !cachedWindows.isEmpty else { return }
+            selectedIndex = -1
+            contentView.isHidden = true
+            tmuxView.isHidden = false
+            updateTmuxCells()
+            positionTmuxPanel()
+        }
+
         panel.orderFrontRegardless()
     }
 
     /// Cmd+< switcher — MRU order
     func show(reverse: Bool) {
-        apps = getMRUApps()
-        guard apps.count > 1 else { return }
+        switch viewMode {
+        case .icon:
+            apps = getMRUApps()
+            guard apps.count > 1 else { return }
+            selectedIndex = reverse ? apps.count - 1 : 1
+            contentView.isHidden = false
+            tmuxView.isHidden = true
+            contentView.update(apps: apps, selectedIndex: selectedIndex)
+            positionPanel(appCount: apps.count)
 
-        selectedIndex = reverse ? apps.count - 1 : 1
-        contentView.update(apps: apps, selectedIndex: selectedIndex)
+        case .tmux:
+            apps = getMRUApps()
+            guard apps.count > 1 else { return }
+            selectedIndex = reverse ? apps.count - 1 : 1
+            contentView.isHidden = true
+            tmuxView.isHidden = false
+            // In MRU mode with tmux, show apps (not windows) as text cells
+            let cells = apps.enumerated().map { (i, app) -> TmuxBarView.Cell in
+                TmuxBarView.Cell(
+                    index: i,
+                    label: app.name,
+                    isActive: false,
+                    isPrevious: false
+                )
+            }
+            tmuxView.update(cells: cells, selectedIndex: selectedIndex)
+            positionTmuxPanel()
+        }
 
-        positionPanel(appCount: apps.count)
         panel.orderFrontRegardless()
     }
 
@@ -160,7 +258,13 @@ class SwitcherPanel {
         } else {
             selectedIndex = (selectedIndex + 1) % apps.count
         }
-        contentView.update(apps: apps, selectedIndex: selectedIndex)
+        switch viewMode {
+        case .icon:
+            contentView.update(apps: apps, selectedIndex: selectedIndex)
+        case .tmux:
+            tmuxView.selectedIndex = selectedIndex
+            tmuxView.needsDisplay = true
+        }
     }
 
     /// Position panel centered horizontally, just below the menu bar / notch
@@ -170,7 +274,6 @@ class SwitcherPanel {
         let height: CGFloat = 50
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.frame
-        let visibleFrame = screen.visibleFrame
         let x = (screenFrame.width - width) / 2
         let y: CGFloat = -8
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
@@ -190,6 +293,116 @@ class SwitcherPanel {
         }
         image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
         return image
+    }
+
+    // MARK: - Tmux View Helpers
+
+    func updateTmuxCells() {
+        let cells = cachedWindows.enumerated().map { (i, win) -> TmuxBarView.Cell in
+            TmuxBarView.Cell(
+                index: i + 1,  // 1-based to match Ctrl+1-9
+                label: win.displayLabel(overrides: windowNameOverrides),
+                isActive: win.windowID == activeWindowID,
+                isPrevious: win.windowID == previousWindowID
+            )
+        }
+        tmuxView.update(cells: cells, selectedIndex: selectedIndex)
+    }
+
+    func positionTmuxPanel() {
+        let width = tmuxView.requiredWidth()
+        let height: CGFloat = 30
+        let screen = NSScreen.main ?? NSScreen.screens[0]
+        let screenFrame = screen.frame
+        let x = (screenFrame.width - width) / 2
+        let y: CGFloat = -4
+        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+
+        if let vibrancy = panel.contentView as? NSVisualEffectView {
+            vibrancy.maskImage = SwitcherPanel.roundedMask(size: NSSize(width: width, height: height), radius: 10)
+        }
+    }
+
+    // MARK: - View Mode Cycling
+
+    func cycleViewMode() {
+        switch viewMode {
+        case .icon: viewMode = .tmux
+        case .tmux: viewMode = .icon
+        }
+        // If overview is showing, refresh it in the new mode
+        if wasOverviewOpen {
+            refreshCache()
+            showOverview()
+        }
+    }
+
+    // MARK: - Rename (tmux mode)
+
+    func beginRenameMode() {
+        guard viewMode == .tmux, !cachedWindows.isEmpty else { return }
+        // Ensure the tmux bar is visible
+        if !wasOverviewOpen {
+            showOverview()
+        }
+        // Find the active window index, or use 0
+        let index = cachedWindows.firstIndex(where: { $0.windowID == activeWindowID }) ?? 0
+        tmuxView.beginRename(at: index)
+    }
+
+    func commitRename(index: Int, newName: String) {
+        guard index >= 0 && index < cachedWindows.count else { return }
+        let windowID = cachedWindows[index].windowID
+        if newName.isEmpty {
+            windowNameOverrides.removeValue(forKey: windowID)
+        } else {
+            windowNameOverrides[windowID] = newName
+        }
+        updateTmuxCells()
+        positionTmuxPanel()
+    }
+
+    // MARK: - Window Activation
+
+    func activateWindow(_ entry: WindowEntry) {
+        // First activate the owning app
+        if let app = NSRunningApplication(processIdentifier: entry.ownerPID) {
+            app.activate(options: .activateIgnoringOtherApps)
+        }
+
+        // Then raise the specific window via AXUIElement, matching by position+size
+        let appElement = AXUIElementCreateApplication(entry.ownerPID)
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let axWindows = windowsRef as? [AXUIElement] else { return }
+
+        for axWindow in axWindows {
+            // Get AX window position and size
+            var posRef: CFTypeRef?
+            var sizeRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef) == .success,
+                  AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeRef) == .success
+            else { continue }
+
+            var pos = CGPoint.zero
+            var size = CGSize.zero
+            AXValueGetValue(posRef as! AXValue, .cgPoint, &pos)
+            AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
+
+            // Match against the CGWindowList bounds (tolerance for rounding)
+            if abs(pos.x - entry.bounds.origin.x) < 2
+                && abs(pos.y - entry.bounds.origin.y) < 2
+                && abs(size.width - entry.bounds.width) < 2
+                && abs(size.height - entry.bounds.height) < 2 {
+                AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+                break
+            }
+        }
+    }
+
+    func activateWindowAtIndex(_ index: Int) {
+        guard index >= 0 && index < cachedWindows.count else { return }
+        activateWindow(cachedWindows[index])
     }
 
     func commitAndHide() {

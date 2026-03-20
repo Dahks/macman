@@ -254,7 +254,8 @@ class SwitcherPanel {
                     index: i,
                     label: app.name,
                     isActive: false,
-                    isPrevious: false
+                    isPrevious: false,
+                    icon: app.icon
                 )
             }
             tmuxView.update(cells: cells, selectedIndex: selectedIndex)
@@ -311,12 +312,14 @@ class SwitcherPanel {
     // MARK: - Tmux View Helpers
 
     func updateTmuxCells() {
+        let appsByPid = Dictionary(uniqueKeysWithValues: cachedApps.map { ($0.nsApp.processIdentifier, $0) })
         let cells = cachedWindows.enumerated().map { (i, win) -> TmuxBarView.Cell in
             TmuxBarView.Cell(
                 index: i + 1,  // 1-based to match Ctrl+1-9
                 label: win.displayLabel(overrides: windowNameOverrides),
                 isActive: win.windowID == activeWindowID,
-                isPrevious: win.windowID == previousWindowID
+                isPrevious: win.windowID == previousWindowID,
+                icon: appsByPid[win.ownerPID]?.icon
             )
         }
         tmuxView.update(cells: cells, selectedIndex: selectedIndex)
@@ -324,7 +327,7 @@ class SwitcherPanel {
 
     func positionTmuxPanel() {
         let width = tmuxView.requiredWidth()
-        let height: CGFloat = 30
+        let height: CGFloat = 16
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.frame
         let x = (screenFrame.width - width) / 2

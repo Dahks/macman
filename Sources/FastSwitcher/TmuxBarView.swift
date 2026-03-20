@@ -6,6 +6,7 @@ class TmuxBarView: NSView, NSTextFieldDelegate {
         let label: String
         let isActive: Bool    // * marker (frontmost window)
         let isPrevious: Bool  // - marker (previously active)
+        let icon: NSImage?
     }
 
     var cells: [Cell] = []
@@ -18,10 +19,12 @@ class TmuxBarView: NSView, NSTextFieldDelegate {
     var onRenameCommit: ((Int, String) -> Void)?
     var onRenameCancel: (() -> Void)?
 
-    private let cellFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    private let cellFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
     private let cellPadding: CGFloat = 12
-    private let verticalPadding: CGFloat = 4
+    private let verticalPadding: CGFloat = 0
     private let horizontalInset: CGFloat = 8
+    private let iconSize: CGFloat = 10
+    private let iconGap: CGFloat = 3  // space between icon and text
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -59,7 +62,8 @@ class TmuxBarView: NSView, NSTextFieldDelegate {
         for cell in cells {
             let text = cellText(for: cell)
             let textSize = (text as NSString).size(withAttributes: attrs)
-            width += textSize.width + cellPadding
+            let iconExtra: CGFloat = cell.icon != nil ? iconSize + iconGap : 0
+            width += textSize.width + iconExtra + cellPadding
         }
         return max(width, 100)
     }
@@ -86,7 +90,8 @@ class TmuxBarView: NSView, NSTextFieldDelegate {
         for (i, cell) in cells.enumerated() {
             let text = cellText(for: cell)
             let textSize = (text as NSString).size(withAttributes: attrs)
-            let cellWidth = textSize.width + cellPadding
+            let iconExtra: CGFloat = cell.icon != nil ? iconSize + iconGap : 0
+            let cellWidth = textSize.width + iconExtra + cellPadding
 
             // Selection highlight
             if i == selectedIndex {
@@ -101,13 +106,23 @@ class TmuxBarView: NSView, NSTextFieldDelegate {
                 selPath.fill()
             }
 
+            var drawX = x + cellPadding / 2
+
+            // Draw icon
+            if let icon = cell.icon {
+                let iconY = (bounds.height - iconSize) / 2
+                icon.draw(in: NSRect(x: drawX, y: iconY, width: iconSize, height: iconSize),
+                          from: .zero, operation: .sourceOver, fraction: 1.0)
+                drawX += iconSize + iconGap
+            }
+
             // Draw text
             let textY = (bounds.height - textSize.height) / 2
             let drawAttrs = i == selectedIndex ? selectedAttrs : attrs
             // Skip drawing text for the cell being renamed
             if !(isRenaming && i == renameIndex) {
                 (text as NSString).draw(
-                    at: NSPoint(x: x + cellPadding / 2, y: textY),
+                    at: NSPoint(x: drawX, y: textY),
                     withAttributes: drawAttrs
                 )
             }

@@ -172,6 +172,19 @@ class SwitcherPanel {
                 activeWindowID = frontWindow.windowID
             }
         }
+
+        // Live-update the visible bar
+        if wasOverviewOpen && !tmuxView.isRenaming {
+            switch viewMode {
+            case .icon:
+                apps = cachedApps
+                contentView.update(apps: apps, selectedIndex: selectedIndex, showNumbers: true)
+                positionPanel(appCount: apps.count)
+            case .tmux:
+                updateTmuxCells()
+                positionTmuxPanel()
+            }
+        }
     }
 
     /// Get apps in MRU order

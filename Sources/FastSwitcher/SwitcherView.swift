@@ -22,10 +22,6 @@ class SwitcherView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        let bgPath = NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius)
-        NSColor(white: 0.12, alpha: 0.85).setFill()
-        bgPath.fill()
-
         for (index, app) in apps.enumerated() {
             let x = padding + CGFloat(index) * cellWidth
             let iconRect = NSRect(
@@ -39,12 +35,12 @@ class SwitcherView: NSView {
             if index == selectedIndex {
                 let selRect = NSRect(
                     x: x + 4,
-                    y: (bounds.height - iconSize) / 2 - 6,
+                    y: (bounds.height - iconSize) / 2 - 3,
                     width: cellWidth - 8,
-                    height: iconSize + 12
+                    height: iconSize + 6
                 )
                 let selPath = NSBezierPath(roundedRect: selRect, xRadius: selectionRadius, yRadius: selectionRadius)
-                NSColor(white: 1.0, alpha: 0.15).setFill()
+                NSColor(white: 1.0, alpha: 0.12).setFill()
                 selPath.fill()
             }
 

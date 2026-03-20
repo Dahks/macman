@@ -29,8 +29,20 @@ class SwitcherPanel {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
+        // Vibrancy background matching the menu bar
+        let vibrancy = NSVisualEffectView(frame: frame)
+        vibrancy.material = .menu
+        vibrancy.blendingMode = .behindWindow
+        vibrancy.state = .active
+        vibrancy.wantsLayer = true
+        vibrancy.layer?.cornerRadius = 14
+        vibrancy.layer?.masksToBounds = true
+        vibrancy.maskImage = SwitcherPanel.roundedMask(size: frame.size, radius: 14)
+
         contentView = SwitcherView(frame: frame)
-        panel.contentView = contentView
+        contentView.autoresizingMask = [.width, .height]
+        vibrancy.addSubview(contentView)
+        panel.contentView = vibrancy
 
         refreshCache()
         startCacheTimer()
@@ -158,8 +170,24 @@ class SwitcherPanel {
         let screenFrame = screen.frame
         let visibleFrame = screen.visibleFrame
         let x = (screenFrame.width - width) / 2
-        let y = visibleFrame.maxY - height - 8
+        let y = visibleFrame.maxY - height + 8
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+
+        // Update the vibrancy mask to match new size
+        if let vibrancy = panel.contentView as? NSVisualEffectView {
+            vibrancy.maskImage = SwitcherPanel.roundedMask(size: NSSize(width: width, height: height), radius: 14)
+        }
+    }
+
+    static func roundedMask(size: NSSize, radius: CGFloat) -> NSImage {
+        let image = NSImage(size: size, flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+            NSColor.black.setFill()
+            path.fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        return image
     }
 
     func commitAndHide() {

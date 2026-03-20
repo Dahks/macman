@@ -195,11 +195,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Escape — cancel (works in both modes)
-        if type == .keyDown && keyCode == 53 && isSwitcherActive {
+        // Escape — cancel MRU hold-mode only, not persistent overview
+        if type == .keyDown && keyCode == 53 && isSwitcherActive && !isOverviewMode {
             isSwitcherActive = false
-            isOverviewMode = false
-            switcher?.hide()
+            switcher?.commitAndHide()
+
+            // Restore overview if it was open before
+            let shouldRestoreOverview = switcher?.wasOverviewOpen ?? false
+            if shouldRestoreOverview {
+                isSwitcherActive = true
+                isOverviewMode = true
+                switcher?.showOverview()
+            }
             return nil
         }
 

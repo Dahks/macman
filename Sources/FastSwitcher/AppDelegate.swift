@@ -4,6 +4,7 @@ import ApplicationServices
 class AppDelegate: NSObject, NSApplicationDelegate {
     var eventTap: CFMachPort?
     var switcher: SwitcherPanel?
+    var clipboardPanel: ClipboardPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if !requestAccessibility() {
@@ -14,6 +15,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         switcher = SwitcherPanel()
+        clipboardPanel = ClipboardPanel()
+        _ = ClipboardHistory.shared  // start polling
         installEventTap()
 
         isSwitcherActive = true
@@ -77,6 +80,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
+
+        // Clipboard panel mode — handle navigation
+        if clipboardPanel?.isVisible == true {
+            if type == .keyDown {
+                switch keyCode {
+                case 53: // Escape — close
+                    clipboardPanel?.hide()
+                    return nil
+                case 125, 38: // Down arrow or j
+                    clipboardPanel?.moveSelection(down: true)
+                    return nil
+                case 126, 40: // Up arrow or k
+                    clipboardPanel?.moveSelection(down: false)
+                    return nil
+                case 36: // Enter — confirm
+                    clipboardPanel?.confirmSelection()
+                    return nil
+                default:
+                    break
+                }
+            }
+            return Unmanaged.passRetained(event)
+        }
+
+        // Ctrl+Shift+Space (keyCode 49) — toggle clipboard history
+        if type == .keyDown && keyCode == 49
+            && flags.contains(.maskControl) && flags.contains(.maskShift) && !flags.contains(.maskCommand) {
+            clipboardPanel?.toggle()
+            return nil
+        }
 
         // Rename mode — intercept events and forward to our own app's text field
         if switcher?.isRenaming == true {

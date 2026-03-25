@@ -39,30 +39,42 @@ class ClipboardHistory {
         }
     }
 
-    func copyToClipboard(at index: Int) {
-        guard index >= 0 && index < entries.count else { return }
-        let text = entries[index]
+    /// Filter entries by regex pattern. Returns all entries if pattern is empty or invalid.
+    func filter(pattern: String) -> [String] {
+        guard !pattern.isEmpty else { return entries }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return entries
+        }
+        return entries.filter { entry in
+            let range = NSRange(entry.startIndex..., in: entry)
+            return regex.firstMatch(in: entry, range: range) != nil
+        }
+    }
+
+    func copyToClipboard(entry: String) {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString(text, forType: .string)
-        lastChangeCount = pb.changeCount  // don't re-detect our own write
+        pb.setString(entry, forType: .string)
+        lastChangeCount = pb.changeCount
 
         // Move to front
-        entries.removeAll { $0 == text }
-        entries.insert(text, at: 0)
+        entries.removeAll { $0 == entry }
+        entries.insert(entry, at: 0)
     }
 }
 
 // MARK: - ClipboardPanel
 
-class ClipboardPanel {
+class ClipboardPanel: NSObject, NSTextFieldDelegate {
     let panel: KeyablePanel
     let listView: ClipboardListView
+    let searchField: NSTextField
     var selectedIndex: Int = 0
     var isVisible: Bool = false
+    var filteredEntries: [String] = []
 
-    init() {
-        let frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+    override init() {
+        let frame = NSRect(x: 0, y: 0, width: 450, height: 340)
         panel = KeyablePanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -85,10 +97,29 @@ class ClipboardPanel {
         vibrancy.layer?.cornerRadius = 10
         vibrancy.layer?.masksToBounds = true
 
-        listView = ClipboardListView(frame: frame)
-        listView.autoresizingMask = [.width, .height]
+        // Search field at the top
+        searchField = NSTextField(frame: NSRect(x: 10, y: frame.height - 30, width: frame.width - 20, height: 22))
+        searchField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        searchField.placeholderString = "Search (regex)..."
+        searchField.isBordered = false
+        searchField.drawsBackground = true
+        searchField.backgroundColor = NSColor(white: 0.15, alpha: 0.9)
+        searchField.textColor = .white
+        searchField.focusRingType = .none
+        searchField.wantsLayer = true
+        searchField.layer?.cornerRadius = 4
+        vibrancy.addSubview(searchField)
+
+        // List view below the search field
+        let listFrame = NSRect(x: 0, y: 0, width: frame.width, height: frame.height - 36)
+        listView = ClipboardListView(frame: listFrame)
+        listView.autoresizingMask = [.width]
         vibrancy.addSubview(listView)
+
         panel.contentView = vibrancy
+
+        super.init()
+        searchField.delegate = self
     }
 
     func toggle() {
@@ -103,40 +134,54 @@ class ClipboardPanel {
         let entries = ClipboardHistory.shared.entries
         guard !entries.isEmpty else { return }
 
+        searchField.stringValue = ""
+        filteredEntries = entries
         selectedIndex = 0
-        listView.update(entries: entries, selectedIndex: selectedIndex)
+        listView.update(entries: filteredEntries, selectedIndex: selectedIndex)
         positionPanel()
         panel.orderFrontRegardless()
         isVisible = true
+
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKey()
+        panel.makeFirstResponder(searchField)
     }
 
     func hide() {
         panel.orderOut(nil)
+        panel.resignKey()
         isVisible = false
     }
 
     func moveSelection(down: Bool) {
-        let count = ClipboardHistory.shared.entries.count
-        guard count > 0 else { return }
+        guard !filteredEntries.isEmpty else { return }
         if down {
-            selectedIndex = (selectedIndex + 1) % count
+            selectedIndex = (selectedIndex + 1) % filteredEntries.count
         } else {
-            selectedIndex = (selectedIndex - 1 + count) % count
+            selectedIndex = (selectedIndex - 1 + filteredEntries.count) % filteredEntries.count
         }
-        listView.update(entries: ClipboardHistory.shared.entries, selectedIndex: selectedIndex)
+        listView.update(entries: filteredEntries, selectedIndex: selectedIndex)
     }
 
     func confirmSelection() {
-        ClipboardHistory.shared.copyToClipboard(at: selectedIndex)
+        guard selectedIndex >= 0 && selectedIndex < filteredEntries.count else { return }
+        ClipboardHistory.shared.copyToClipboard(entry: filteredEntries[selectedIndex])
         hide()
     }
 
+    private func updateFilter() {
+        let pattern = searchField.stringValue
+        filteredEntries = ClipboardHistory.shared.filter(pattern: pattern)
+        selectedIndex = 0
+        listView.update(entries: filteredEntries, selectedIndex: selectedIndex)
+        positionPanel()
+    }
+
     private func positionPanel() {
-        let entries = ClipboardHistory.shared.entries
-        let rowHeight: CGFloat = 24
-        let maxVisible = min(entries.count, 12)
-        let height = CGFloat(maxVisible) * rowHeight + 16
-        let width: CGFloat = 400
+        let width: CGFloat = 450
+        let searchHeight: CGFloat = 36
+        let listHeight = filteredEntries.isEmpty ? CGFloat(24 + 16) : listView.requiredHeight(width: width)
+        let height = listHeight + searchHeight
 
         let screen = NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.screens[0]
         let screenFrame = screen.frame
@@ -144,6 +189,10 @@ class ClipboardPanel {
         let y = screenFrame.origin.y + (screenFrame.height - height) / 2
 
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+
+        // Reposition subviews
+        searchField.frame = NSRect(x: 10, y: height - 30, width: width - 20, height: 22)
+        listView.frame = NSRect(x: 0, y: 0, width: width, height: height - searchHeight)
 
         if let vibrancy = panel.contentView as? NSVisualEffectView {
             let mask = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
@@ -154,6 +203,32 @@ class ClipboardPanel {
             vibrancy.maskImage = mask
         }
     }
+
+    // MARK: - NSTextFieldDelegate
+
+    func controlTextDidChange(_ obj: Notification) {
+        updateFilter()
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            confirmSelection()
+            return true
+        }
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            hide()
+            return true
+        }
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            moveSelection(down: true)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.moveUp(_:)) {
+            moveSelection(down: false)
+            return true
+        }
+        return false
+    }
 }
 
 // MARK: - ClipboardListView
@@ -163,9 +238,10 @@ class ClipboardListView: NSView {
     private var selectedIndex: Int = 0
 
     private let rowHeight: CGFloat = 24
+    private let maxExpandedHeight: CGFloat = 120
     private let padding: CGFloat = 8
-    private let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-    private let maxVisible = 12
+    let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    let maxVisible = 12
 
     func update(entries: [String], selectedIndex: Int) {
         self.entries = entries
@@ -173,18 +249,41 @@ class ClipboardListView: NSView {
         needsDisplay = true
     }
 
+    /// Compute expanded height for selected entry
+    private func expandedHeight(for text: String, width: CGFloat) -> CGFloat {
+        let constrainRect = NSRect(x: 0, y: 0, width: width - padding * 2 - 12, height: .greatestFiniteMagnitude)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let boundingRect = (text as NSString).boundingRect(with: constrainRect.size,
+                                                            options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                                            attributes: attrs)
+        let h = ceil(boundingRect.height) + 8
+        return min(max(h, rowHeight), maxExpandedHeight)
+    }
+
+    /// Total height needed for visible rows (accounting for expanded selected row)
+    func requiredHeight(width: CGFloat) -> CGFloat {
+        let visibleCount = min(entries.count, maxVisible)
+        let scrollOffset = selectedIndex < maxVisible ? 0 : selectedIndex - maxVisible + 1
+
+        var total: CGFloat = padding
+        for i in 0..<visibleCount {
+            let entryIndex = i + scrollOffset
+            guard entryIndex < entries.count else { break }
+            if entryIndex == selectedIndex {
+                let text = entries[entryIndex].replacingOccurrences(of: "\t", with: " ")
+                total += expandedHeight(for: text, width: width)
+            } else {
+                total += rowHeight
+            }
+        }
+        return total
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
         let visibleCount = min(entries.count, maxVisible)
-
-        // Scroll so selected item is visible
-        let scrollOffset: Int
-        if selectedIndex < maxVisible {
-            scrollOffset = 0
-        } else {
-            scrollOffset = selectedIndex - maxVisible + 1
-        }
+        let scrollOffset = selectedIndex < maxVisible ? 0 : selectedIndex - maxVisible + 1
 
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -195,34 +294,53 @@ class ClipboardListView: NSView {
             .foregroundColor: NSColor.white,
         ]
 
+        var y = bounds.height - padding / 2
+
         for i in 0..<visibleCount {
             let entryIndex = i + scrollOffset
             guard entryIndex < entries.count else { break }
 
-            let y = bounds.height - CGFloat(i + 1) * rowHeight - padding / 2
+            let isSelected = entryIndex == selectedIndex
+            let rawText = entries[entryIndex].replacingOccurrences(of: "\t", with: " ")
+
+            let thisRowHeight: CGFloat
+            let displayText: String
+
+            if isSelected {
+                thisRowHeight = expandedHeight(for: rawText, width: bounds.width)
+                displayText = rawText  // show full text, wrapped
+            } else {
+                thisRowHeight = rowHeight
+                // Single line, truncated
+                var line = rawText.replacingOccurrences(of: "\n", with: " ")
+                if line.count > 65 {
+                    line = String(line.prefix(62)) + "..."
+                }
+                displayText = line
+            }
+
+            y -= thisRowHeight
 
             // Selection highlight
-            if entryIndex == selectedIndex {
-                let selRect = NSRect(x: padding, y: y, width: bounds.width - padding * 2, height: rowHeight)
+            if isSelected {
+                let selRect = NSRect(x: padding, y: y, width: bounds.width - padding * 2, height: thisRowHeight)
                 let selPath = NSBezierPath(roundedRect: selRect, xRadius: 4, yRadius: 4)
                 NSColor(white: 1.0, alpha: 0.12).setFill()
                 selPath.fill()
             }
 
-            // Truncate and clean up the entry text
-            var text = entries[entryIndex]
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\t", with: " ")
-            if text.count > 60 {
-                text = String(text.prefix(57)) + "..."
-            }
+            let drawAttrs = isSelected ? selectedAttrs : attrs
 
-            let drawAttrs = entryIndex == selectedIndex ? selectedAttrs : attrs
-            let textY = y + (rowHeight - font.pointSize) / 2
-            (text as NSString).draw(
-                at: NSPoint(x: padding + 6, y: textY),
-                withAttributes: drawAttrs
-            )
+            if isSelected {
+                // Draw wrapped text in a rect
+                let textRect = NSRect(x: padding + 6, y: y + 4,
+                                      width: bounds.width - padding * 2 - 12,
+                                      height: thisRowHeight - 8)
+                (displayText as NSString).draw(in: textRect, withAttributes: drawAttrs)
+            } else {
+                let textY = y + (thisRowHeight - font.pointSize) / 2
+                (displayText as NSString).draw(at: NSPoint(x: padding + 6, y: textY), withAttributes: drawAttrs)
+            }
         }
     }
 }

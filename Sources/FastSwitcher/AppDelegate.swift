@@ -81,25 +81,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Clipboard panel mode — handle navigation
-        if clipboardPanel?.isVisible == true {
-            if type == .keyDown {
-                switch keyCode {
-                case 53: // Escape — close
-                    clipboardPanel?.hide()
-                    return nil
-                case 125, 38: // Down arrow or j
-                    clipboardPanel?.moveSelection(down: true)
-                    return nil
-                case 126, 40: // Up arrow or k
-                    clipboardPanel?.moveSelection(down: false)
-                    return nil
-                case 36: // Enter — confirm
-                    clipboardPanel?.confirmSelection()
-                    return nil
-                default:
-                    break
+        // fn+h/j/k/l → arrow keys — must run FIRST so all modes see arrow keycodes
+        // h=4→left(123), j=38→down(125), k=40→up(126), l=37→right(124)
+        if (type == .keyDown || type == .keyUp) && flags.contains(.maskSecondaryFn) {
+            let arrowMap: [Int64: Int64] = [4: 123, 38: 125, 40: 126, 37: 124]
+            if let arrowCode = arrowMap[keyCode] {
+                let isDown = type == .keyDown
+                if let newEvent = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(arrowCode), keyDown: isDown) {
+                    var newFlags = flags
+                    newFlags.remove(.maskSecondaryFn)
+                    newEvent.flags = newFlags
+                    // Re-enter handleEvent with the remapped event
+                    return handleEvent(proxy: proxy, type: type, event: newEvent)
                 }
+            }
+        }
+
+        // Clipboard panel mode — forward key events to search field
+        if clipboardPanel?.isVisible == true {
+            if type == .keyDown || type == .keyUp {
+                if let nsEvent = NSEvent(cgEvent: event) {
+                    NSApp.postEvent(nsEvent, atStart: true)
+                }
+                return nil
             }
             return Unmanaged.passRetained(event)
         }
@@ -126,26 +130,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 return nil  // consume the original event
             }
             return Unmanaged.passRetained(event)
-        }
-
-        // fn+h/j/k/l → arrow keys (works for keyDown and keyUp)
-        // h=4→left(123), j=38→down(125), k=40→up(126), l=37→right(124)
-        if (type == .keyDown || type == .keyUp) && flags.contains(.maskSecondaryFn) {
-            let arrowMap: [Int64: Int64] = [4: 123, 38: 125, 40: 126, 37: 124]
-            if let arrowCode = arrowMap[keyCode] {
-                // Create a fresh event to avoid residual fn flag in raw event data
-                let isDown = type == .keyDown
-                if let newEvent = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(arrowCode), keyDown: isDown) {
-                    var newFlags = flags
-                    newFlags.remove(.maskSecondaryFn)
-                    newEvent.flags = newFlags
-                    return Unmanaged.passRetained(newEvent)
-                }
-                // Fallback: modify in-place
-                event.setIntegerValueField(.keyboardEventKeycode, value: arrowCode)
-                event.flags.remove(.maskSecondaryFn)
-                return Unmanaged.passRetained(event)
-            }
         }
 
         // Key between left-Shift and Z on ISO keyboards (< > key), keycode 50

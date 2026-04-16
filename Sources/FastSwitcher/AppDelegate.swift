@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var eventTap: CFMachPort?
     var switcher: SwitcherPanel?
     var clipboardPanel: ClipboardPanel?
+    var commandPalette: CommandPalette?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if !requestAccessibility() {
@@ -16,6 +17,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         switcher = SwitcherPanel()
         clipboardPanel = ClipboardPanel()
+        commandPalette = CommandPalette()
+        commandPalette?.onExecute = { [weak self] cmd in
+            self?.switcher?.executeCommand(cmd)
+        }
         _ = ClipboardHistory.shared  // start polling
         installEventTap()
 
@@ -95,6 +100,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     return handleEvent(proxy: proxy, type: type, event: newEvent)
                 }
             }
+        }
+
+        // Command palette mode — forward key events to input field
+        if commandPalette?.isVisible == true {
+            if type == .keyDown || type == .keyUp {
+                if let nsEvent = NSEvent(cgEvent: event) {
+                    NSApp.postEvent(nsEvent, atStart: true)
+                }
+                return nil
+            }
+            return Unmanaged.passRetained(event)
+        }
+
+        // Ctrl+Shift+. (keyCode 47) — toggle command palette
+        if type == .keyDown && keyCode == 47
+            && flags.contains(.maskControl) && flags.contains(.maskShift) && !flags.contains(.maskCommand) {
+            commandPalette?.toggle()
+            return nil
         }
 
         // Clipboard panel mode — forward key events to search field

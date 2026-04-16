@@ -344,6 +344,80 @@ class SwitcherPanel {
         }
     }
 
+    // MARK: - Window Reordering
+
+    /// Swap two window positions by their displayed index (0-based)
+    func swapWindows(indexA: Int, indexB: Int) -> String? {
+        guard indexA >= 0 && indexA < cachedWindows.count else { return "Invalid index \(indexA)" }
+        guard indexB >= 0 && indexB < cachedWindows.count else { return "Invalid index \(indexB)" }
+        guard indexA != indexB else { return nil }
+
+        let idA = cachedWindows[indexA].windowID
+        let idB = cachedWindows[indexB].windowID
+
+        guard let orderIdxA = windowOrder.firstIndex(of: idA),
+              let orderIdxB = windowOrder.firstIndex(of: idB) else { return "Window not found" }
+
+        windowOrder.swapAt(orderIdxA, orderIdxB)
+
+        // Rebuild and refresh display
+        refreshCache()
+        return nil
+    }
+
+    /// Move a window from one position to another (0-based)
+    func moveWindow(from: Int, to: Int) -> String? {
+        guard from >= 0 && from < cachedWindows.count else { return "Invalid index \(from)" }
+        guard to >= 0 && to < cachedWindows.count else { return "Invalid index \(to)" }
+        guard from != to else { return nil }
+
+        let id = cachedWindows[from].windowID
+        guard let orderIdx = windowOrder.firstIndex(of: id) else { return "Window not found" }
+
+        windowOrder.remove(at: orderIdx)
+
+        // Find insertion point: where the target index's window currently is
+        let targetID = cachedWindows[to].windowID
+        if let targetOrderIdx = windowOrder.firstIndex(of: targetID) {
+            windowOrder.insert(id, at: to < from ? targetOrderIdx : targetOrderIdx + 1)
+        } else {
+            windowOrder.append(id)
+        }
+
+        refreshCache()
+        return nil
+    }
+
+    /// Execute a command palette command
+    func executeCommand(_ cmd: String) -> String? {
+        let parts = cmd.lowercased().split(separator: " ")
+        guard let verb = parts.first else { return "Empty command" }
+
+        switch verb {
+        case "swap", "s":
+            guard parts.count == 3,
+                  let a = Int(parts[1]),
+                  let b = Int(parts[2]) else {
+                return "Usage: swap <a> <b>"
+            }
+            return swapWindows(indexA: a, indexB: b)
+
+        case "move", "m":
+            guard parts.count == 3,
+                  let from = Int(parts[1]),
+                  let to = Int(parts[2]) else {
+                return "Usage: move <from> <to>"
+            }
+            return moveWindow(from: from, to: to)
+
+        case "help", "h", "?":
+            return "swap <a> <b> | move <from> <to>"
+
+        default:
+            return "Unknown: \(verb). Try: swap, move, help"
+        }
+    }
+
     // MARK: - View Mode Cycling
 
     func cycleViewMode() {

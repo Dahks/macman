@@ -142,14 +142,12 @@ class ClipboardPanel: NSObject, NSTextFieldDelegate {
         panel.orderFrontRegardless()
         isVisible = true
 
-        NSApp.activate(ignoringOtherApps: true)
         panel.makeKey()
         panel.makeFirstResponder(searchField)
     }
 
     func hide() {
         panel.orderOut(nil)
-        panel.resignKey()
         isVisible = false
     }
 
